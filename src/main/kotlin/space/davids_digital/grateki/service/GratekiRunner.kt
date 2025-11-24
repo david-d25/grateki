@@ -10,6 +10,7 @@ import space.davids_digital.grateki.model.RunConfig
 import space.davids_digital.grateki.model.RunResult
 import space.davids_digital.grateki.model.TestKey
 import space.davids_digital.grateki.model.TestRunInfo
+import space.davids_digital.grateki.model.TestStatus
 import java.nio.file.Files
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -138,8 +139,8 @@ class GratekiRunner (
         val allKeys = newRunsByKey.keys + oldRunsByKey.keys
 
         val merged = allKeys.associateWith { key ->
-            val oldList = oldRunsByKey[key].orEmpty()
-            val newList = newRunsByKey[key].orEmpty()
+            val oldList = oldRunsByKey[key].orEmpty().filter { it.status != TestStatus.SKIPPED }
+            val newList = newRunsByKey[key].orEmpty().filter { it.status != TestStatus.SKIPPED }
             (oldList + newList).takeLast(MAX_TEST_HISTORY_ENTRIES)
         }
 

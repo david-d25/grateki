@@ -133,4 +133,4 @@ For each batch of tests, Grateki constructs include/exclude filters based on the
 Because of potential OS command line length limits, Grateki writes filters to temporary files and passes them to Gradle
 through an environment variable that is read by an init script.
 
-Test results are captures by listening to Gradle Test Progress events.
+Test results are captured by listening to Gradle Test Progress events.
