@@ -1,0 +1,21 @@
+[versions]
+kotlin = "2.2.21"
+picocli = "4.7.7"
+gradleToolingApi = "9.0.0"
+slf4j = "2.0.17"
+mapstruct = "1.6.3"
+kotlinxSerializationJson = "1.9.0"
+
+[libraries]
+picocli-core = { module = "info.picocli:picocli", version.ref = "picocli" }
+picocli-codegen = { module = "info.picocli:picocli-codegen", version.ref = "picocli" }
+gradle-toolingApi = { module = "org.gradle:gradle-tooling-api", version.ref = "gradleToolingApi" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+mapstruct-core = { module = "org.mapstruct:mapstruct", version.ref = "mapstruct" }
+mapstruct-processor = { module = "org.mapstruct:mapstruct-processor", version.ref = "mapstruct" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
