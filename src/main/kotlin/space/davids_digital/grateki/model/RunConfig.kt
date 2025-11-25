@@ -8,5 +8,5 @@ data class RunConfig (
     val tasks: List<String>,
     val workers: Int,
     val timeout: Duration? = null,
-    val logDirPath: Path,
+    val gratekiHome: Path,
 )

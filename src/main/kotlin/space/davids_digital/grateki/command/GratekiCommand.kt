@@ -8,6 +8,8 @@ import space.davids_digital.grateki.exec.InitScriptProvider
 import space.davids_digital.grateki.exec.ToolingApiGradleTestExecutor
 import space.davids_digital.grateki.history.JsonFileHistoryStore
 import space.davids_digital.grateki.model.RunConfig
+import space.davids_digital.grateki.model.RunResult
+import space.davids_digital.grateki.model.TestStatus
 import java.nio.file.Path
 import java.time.Duration
 import java.util.concurrent.Callable
@@ -80,11 +82,8 @@ class GratekiCommand : Callable<Int> {
             println("Couldn't load history, will start fresh")
         }
 
-        // Where to store logs
-        val logsDirPath = effectiveHomePath.resolve("logs")
-
         // Determine how many workers to use
-        val maxWorkers = Runtime.getRuntime().availableProcessors()*16 // Arbitrary limit to prevent insanity
+        val maxWorkers = Runtime.getRuntime().availableProcessors() * 16 // Arbitrary limit to prevent insanity
         if (!disableFoolproofness && workers > maxWorkers) {
             println("Requested workers ($workers) exceeds maximum allowed ($maxWorkers). " +
                     "Use --disable-foolproofness to override.")
@@ -106,11 +105,27 @@ class GratekiCommand : Callable<Int> {
             projectPath = projectPath,
             tasks = tasks,
             workers = workersEffective,
-            logDirPath = logsDirPath,
+            gratekiHome = effectiveHomePath,
             timeout = timeout
         )
         val result = runner.run(config)
+        printResult(result)
         return if (result.success) 0 else 1
+    }
+
+    private fun printResult(result: RunResult) {
+        val totalTests = result.workerResults.sumOf { it.tests.size }
+        val testCountByStatus = result.workerResults
+            .flatMap { it.tests }
+            .groupingBy { it.status }
+            .eachCount()
+        val totalFailures = testCountByStatus.getOrDefault(TestStatus.FAILED, 0)
+        val totalSkipped = testCountByStatus.getOrDefault(TestStatus.SKIPPED, 0)
+        val totalPassed = testCountByStatus.getOrDefault(TestStatus.PASSED, 0)
+        println("Test run complete: $totalTests tests, " +
+                "$totalPassed passed, " +
+                "$totalFailures failed, " +
+                "$totalSkipped skipped.")
     }
 
     private fun printIntro() {

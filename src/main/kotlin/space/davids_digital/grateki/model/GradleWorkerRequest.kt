@@ -55,5 +55,5 @@ data class GradleWorkerRequest(
      * Both stdout and stderr will be redirected to this file if provided.
      * If null, output will be disabled.
      */
-    val logPath: Path? = null
+    val gradleLogPath: Path? = null
 )

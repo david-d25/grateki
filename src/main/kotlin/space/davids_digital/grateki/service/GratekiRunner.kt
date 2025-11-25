@@ -47,6 +47,12 @@ class GratekiRunner (
         val requests = mutableListOf<GradleWorkerRequest>()
         // Last worker will run all test not run by other workers to also cover new tests
         val lastWorkerExclusionList = mutableSetOf<String>()
+        val currentRunDir = config.gratekiHome.toFile().resolve("runs").resolve("run-$runId")
+        val logsDir = currentRunDir.resolve("logs")
+        val debugDir = currentRunDir.resolve("debug")
+        currentRunDir.mkdirs()
+        logsDir.mkdirs()
+        debugDir.mkdirs()
         // Take all batches except the last one
         for (index in 0 ..< batches.lastIndex) {
             val batch = batches[index]
@@ -54,17 +60,16 @@ class GratekiRunner (
             val classes = batch.tests.map { it.className }.distinct()
             lastWorkerExclusionList += classes
 
+            val gradleLogPath = logsDir.resolve("gradle-$index.log").toPath()
+
             // Init script will read this file to know what test classes to run
             val testsFile = Files.createTempFile("grateki-tests-${index}-incl-", ".txt")
             testsFile.toFile().printWriter().use { out ->
                 classes.forEach(out::println)
             }
 
-            val workerLogPath = config.logDirPath
-                .resolve("run-$runId")
-                .resolve("worker-$index.log")
-
-            workerLogPath.parent.toFile().mkdirs()
+            val testsDebugFile = debugDir.resolve("tests-$index-incl.txt")
+            testsFile.toFile().copyTo(testsDebugFile)
 
             val request = GradleWorkerRequest(
                 id = index,
@@ -72,7 +77,7 @@ class GratekiRunner (
                 tasks = effectiveTasks,
                 initScriptPath = initScriptProvider.getInclude(),
                 systemProperties = mapOf("grateki.testsToRunFile" to testsFile.toAbsolutePath().toString()),
-                logPath = workerLogPath
+                gradleLogPath = gradleLogPath
             )
             requests.add(request)
         }
@@ -82,10 +87,9 @@ class GratekiRunner (
         lastWorkerTestsFile.toFile().printWriter().use { out ->
             lastWorkerExclusionList.forEach(out::println)
         }
-        val lastWorkerLogPath = config.logDirPath
-            .resolve("run-$runId")
-            .resolve("worker-$lastWorkerIndex.log")
-        lastWorkerLogPath.parent.toFile().mkdirs()
+        val lastTestsDebugFile = debugDir.resolve("tests-$lastWorkerIndex-excl.txt")
+        lastWorkerTestsFile.toFile().copyTo(lastTestsDebugFile)
+        val lastGradleLogPath = logsDir.resolve("gradle-$lastWorkerIndex.log").toPath()
 
         val lastWorkerRequest = GradleWorkerRequest(
             id = lastWorkerIndex,
@@ -93,7 +97,7 @@ class GratekiRunner (
             tasks = effectiveTasks,
             initScriptPath = initScriptProvider.getExclude(),
             systemProperties = mapOf("grateki.testsToExcludeFile" to lastWorkerTestsFile.toAbsolutePath().toString()),
-            logPath = lastWorkerLogPath
+            gradleLogPath = lastGradleLogPath
         )
         requests.add(lastWorkerRequest)
 

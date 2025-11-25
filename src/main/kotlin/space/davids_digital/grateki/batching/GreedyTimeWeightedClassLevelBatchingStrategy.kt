@@ -80,11 +80,13 @@ class GreedyTimeWeightedClassLevelBatchingStrategy : BatchingStrategy {
         }
 
         // Create TestBatch objects
-        return batches.mapIndexed { index, testKeys ->
-            TestBatch(
-                tests = testKeys,
-                totalEstimatedDurationMillis = batchDurations[index]
-            )
-        }
+        return batches
+            .filter { it.isNotEmpty() }
+            .mapIndexed { index, testKeys ->
+                TestBatch(
+                    tests = testKeys,
+                    totalEstimatedDurationMillis = batchDurations[index]
+                )
+            }
     }
 }

@@ -5,24 +5,14 @@ import org.gradle.tooling.events.OperationDescriptor
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.task.TaskOperationDescriptor
-import org.gradle.tooling.events.test.JvmTestKind
-import org.gradle.tooling.events.test.JvmTestOperationDescriptor
-import org.gradle.tooling.events.test.TestFailureResult
-import org.gradle.tooling.events.test.TestFinishEvent
-import org.gradle.tooling.events.test.TestSkippedResult
-import org.gradle.tooling.events.test.TestStartEvent
-import org.gradle.tooling.events.test.TestSuccessResult
-import space.davids_digital.grateki.model.GradleWorkerRequest
-import space.davids_digital.grateki.model.GradleWorkerResult
-import space.davids_digital.grateki.model.TestKey
-import space.davids_digital.grateki.model.TestRunInfo
-import space.davids_digital.grateki.model.TestStatus
+import org.gradle.tooling.events.test.*
+import space.davids_digital.grateki.model.*
 import java.io.PrintStream
-import java.time.Instant
+import java.util.*
 
 class ToolingApiGradleTestExecutor : GradleTestExecutor {
     override fun run(request: GradleWorkerRequest): GradleWorkerResult {
-        val buildId = Instant.now().toEpochMilli().toString()
+        val buildId = UUID.randomUUID().toString()
         val collectedTests = mutableListOf<TestRunInfo>()
 
         return try {
@@ -44,8 +34,8 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                     }
                 )
 
-                if (request.logPath != null) {
-                    val printStream = PrintStream(request.logPath.toFile())
+                if (request.gradleLogPath != null) {
+                    val printStream = PrintStream(request.gradleLogPath.toFile())
                     build.setStandardOutput(printStream)
                     build.setStandardError(printStream)
                 }
