@@ -6,9 +6,11 @@ import space.davids_digital.grateki.service.GratekiRunner
 import space.davids_digital.grateki.batching.GreedyTimeWeightedClassLevelBatchingStrategy
 import space.davids_digital.grateki.exec.InitScriptProvider
 import space.davids_digital.grateki.exec.ToolingApiGradleTestExecutor
+import space.davids_digital.grateki.exec.event.TestEvent
 import space.davids_digital.grateki.history.JsonFileHistoryStore
 import space.davids_digital.grateki.model.RunConfig
 import space.davids_digital.grateki.model.RunResult
+import space.davids_digital.grateki.model.TestRunInfo
 import space.davids_digital.grateki.model.TestStatus
 import java.nio.file.Path
 import java.time.Duration
@@ -108,9 +110,26 @@ class GratekiCommand : Callable<Int> {
             gratekiHome = effectiveHomePath,
             timeout = timeout
         )
-        val result = runner.run(config)
+        val result = runner.run(config, ::handleTestEvent)
         printResult(result)
         return if (result.success) 0 else 1
+    }
+
+    private fun handleTestEvent(event: TestEvent) {
+        if (event is TestEvent.TestFinishEvent) {
+             printTestFinishLine(event.runInfo)
+        }
+    }
+
+    private fun printTestFinishLine(testRunInfo: TestRunInfo) {
+        val statusText = when (testRunInfo.status) {
+            TestStatus.PASSED ->  "PASSED "
+            TestStatus.FAILED ->  "FAILED "
+            TestStatus.SKIPPED -> "SKIPPED"
+        }
+        val className = testRunInfo.testKey.className
+        val testName = testRunInfo.testKey.testName
+        println("$statusText $className#$testName in ${testRunInfo.durationMs} ms")
     }
 
     private fun printResult(result: RunResult) {

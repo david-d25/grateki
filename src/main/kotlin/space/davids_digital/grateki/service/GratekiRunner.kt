@@ -3,6 +3,7 @@ package space.davids_digital.grateki.service
 import space.davids_digital.grateki.batching.BatchingStrategy
 import space.davids_digital.grateki.exec.GradleTestExecutor
 import space.davids_digital.grateki.exec.InitScriptProvider
+import space.davids_digital.grateki.exec.event.TestEventHandler
 import space.davids_digital.grateki.history.HistoryStore
 import space.davids_digital.grateki.model.GradleWorkerRequest
 import space.davids_digital.grateki.model.GradleWorkerResult
@@ -39,7 +40,7 @@ class GratekiRunner (
         const val DEFAULT_TEST_TASK = "test"
     }
 
-    fun run(config: RunConfig): RunResult {
+    fun run(config: RunConfig, eventHandler: TestEventHandler? = null): RunResult {
         val runId = System.currentTimeMillis()
         val effectiveTasks = config.tasks.ifEmpty { listOf(DEFAULT_TEST_TASK) }
         val history = historyStore.getAll()
@@ -106,7 +107,7 @@ class GratekiRunner (
         try {
             val futures = requests.map { req ->
                 executorService.submit<GradleWorkerResult> {
-                    gradleExecutor.run(req)
+                    gradleExecutor.run(req, eventHandler)
                 }
             }
             val results = futures.mapIndexed { index, future ->

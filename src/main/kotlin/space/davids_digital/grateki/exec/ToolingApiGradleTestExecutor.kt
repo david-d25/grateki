@@ -6,13 +6,15 @@ import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.task.TaskOperationDescriptor
 import org.gradle.tooling.events.test.*
+import space.davids_digital.grateki.exec.event.TestEvent
+import space.davids_digital.grateki.exec.event.TestEventHandler
 import space.davids_digital.grateki.model.*
 import java.io.PrintStream
 import java.util.*
 import java.util.concurrent.CopyOnWriteArrayList
 
 class ToolingApiGradleTestExecutor : GradleTestExecutor {
-    override fun run(request: GradleWorkerRequest): GradleWorkerResult {
+    override fun run(request: GradleWorkerRequest, eventHandler: TestEventHandler?): GradleWorkerResult {
         val buildId = UUID.randomUUID().toString()
         val collectedTests = CopyOnWriteArrayList<TestRunInfo>()
 
@@ -44,7 +46,7 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                     }
 
                     build.addProgressListener({ event ->
-                        onBuildStatusChanged(event, collectedTests, buildId)
+                        onBuildStatusChanged(event, collectedTests, buildId, eventHandler)
                     }, OperationType.TEST)
 
                     if (request.systemProperties.isNotEmpty()) {
@@ -78,27 +80,26 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
         event: ProgressEvent,
         collectedTests: MutableList<TestRunInfo>,
         buildId: String,
+        eventHandler: TestEventHandler?
     ) {
+        val descriptor = event.descriptor
+        val jvmDescriptor = descriptor as? JvmTestOperationDescriptor ?: return
+        if (jvmDescriptor.methodName == null) {
+            return
+        }
+        if (jvmDescriptor.jvmTestKind != JvmTestKind.ATOMIC) return
+        val testKey = TestKey(
+            gradlePath = resolveGradleModulePath(jvmDescriptor),
+            className = jvmDescriptor.className ?: "<unknown>",
+            testName = jvmDescriptor.methodName ?: jvmDescriptor.displayName ?: "<unknown>"
+        )
+
         when (event) {
             is TestStartEvent -> {
-                // Make live progress later
+                val event = TestEvent.TestStartEvent(testKey)
+                eventHandler?.handle(event)
             }
             is TestFinishEvent -> {
-                val descriptor = event.descriptor
-
-                val jvmDescriptor = descriptor as? JvmTestOperationDescriptor ?: return
-                if (jvmDescriptor.methodName == null) {
-                    return
-                }
-
-                if (jvmDescriptor.jvmTestKind != JvmTestKind.ATOMIC) return
-
-                val testKey = TestKey(
-                    gradlePath = resolveGradleModulePath(jvmDescriptor),
-                    className = jvmDescriptor.className ?: "<unknown>",
-                    testName = jvmDescriptor.methodName ?: jvmDescriptor.displayName ?: "<unknown>"
-                )
-
                 val result = event.result
                 val status = when (result) {
                     is TestSuccessResult -> TestStatus.PASSED
@@ -118,6 +119,9 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                 )
 
                 collectedTests += runInfo
+
+                val event = TestEvent.TestFinishEvent(testKey, runInfo)
+                eventHandler?.handle(event)
             }
             else -> {
                 // Cricket sounds...
