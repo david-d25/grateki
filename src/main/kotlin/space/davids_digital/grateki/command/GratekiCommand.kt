@@ -59,13 +59,13 @@ class GratekiCommand : Callable<Int> {
         val effectiveHomePath = (homePath ?: defaultHomePath).toAbsolutePath().normalize()
         println("Using Grateki home at $effectiveHomePath")
 
-        if (defaultHomePath.isRegularFile()) {
-            println("Default Grateki home path $defaultHomePath is a file, " +
+        if (effectiveHomePath.isRegularFile()) {
+            println("Grateki home path $effectiveHomePath is a file, " +
                     "please remove it or specify a different home path using --home")
             return 1
         }
 
-        if (defaultHomePath.notExists()) {
+        if (effectiveHomePath.notExists()) {
             println("Creating Grateki home directory at $effectiveHomePath")
             effectiveHomePath.toFile().mkdirs()
         }
@@ -102,7 +102,7 @@ class GratekiCommand : Callable<Int> {
             initScriptProvider = InitScriptProvider()
         )
         val config = RunConfig(
-            projectPath = projectPath,
+            projectPath = effectiveProjectPath,
             tasks = tasks,
             workers = workersEffective,
             gratekiHome = effectiveHomePath,

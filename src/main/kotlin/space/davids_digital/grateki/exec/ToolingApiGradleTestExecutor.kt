@@ -9,11 +9,12 @@ import org.gradle.tooling.events.test.*
 import space.davids_digital.grateki.model.*
 import java.io.PrintStream
 import java.util.*
+import java.util.concurrent.CopyOnWriteArrayList
 
 class ToolingApiGradleTestExecutor : GradleTestExecutor {
     override fun run(request: GradleWorkerRequest): GradleWorkerResult {
         val buildId = UUID.randomUUID().toString()
-        val collectedTests = mutableListOf<TestRunInfo>()
+        val collectedTests = CopyOnWriteArrayList<TestRunInfo>()
 
         return try {
             // Connect to the Gradle project
@@ -24,44 +25,49 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
 
             connection.use { connection ->
                 val build = connection.newBuild()
-                build.forTasks(*request.tasks.toTypedArray())
-                build.withArguments(
-                    buildList {
-                        request.initScriptPath?.let {
-                            addAll(listOf("--init-script", it.toString()))
+                var logStream: PrintStream? = null
+                try {
+                    build.forTasks(*request.tasks.toTypedArray())
+                    build.withArguments(
+                        buildList {
+                            request.initScriptPath?.let {
+                                addAll(listOf("--init-script", it.toString()))
+                            }
+                            addAll(request.gradleArgs)
                         }
-                        addAll(request.gradleArgs)
+                    )
+
+                    if (request.gradleLogPath != null) {
+                        logStream = PrintStream(request.gradleLogPath.toFile())
+                        build.setStandardOutput(logStream)
+                        build.setStandardError(logStream)
                     }
-                )
 
-                if (request.gradleLogPath != null) {
-                    val printStream = PrintStream(request.gradleLogPath.toFile())
-                    build.setStandardOutput(printStream)
-                    build.setStandardError(printStream)
+                    build.addProgressListener({ event ->
+                        onBuildStatusChanged(event, collectedTests, buildId)
+                    }, OperationType.TEST)
+
+                    if (request.systemProperties.isNotEmpty()) {
+                        build.setJvmArguments(request.jvmArgs + request.systemProperties.map { (k, v) -> "-D$k=$v" })
+                    } else if (request.jvmArgs.isNotEmpty()) {
+                        build.setJvmArguments(request.jvmArgs)
+                    }
+
+                    build.run()
+                } finally {
+                    logStream?.close()
                 }
-
-                build.addProgressListener({ event ->
-                    onBuildStatusChanged(event, collectedTests, buildId)
-                }, OperationType.TEST)
-
-                if (request.systemProperties.isNotEmpty()) {
-                    build.setJvmArguments(request.jvmArgs + request.systemProperties.map { (k, v) -> "-D$k=$v" })
-                } else if (request.jvmArgs.isNotEmpty()) {
-                    build.setJvmArguments(request.jvmArgs)
-                }
-
-                build.run()
             }
 
             GradleWorkerResult(
                 workerId = request.id,
-                tests = collectedTests,
+                tests = collectedTests.toList(),
                 success = true,
             )
         } catch (t: Throwable) {
             GradleWorkerResult(
                 workerId = request.id,
-                tests = collectedTests,
+                tests = collectedTests.toList(),
                 success = false,
                 throwable = t,
             )
