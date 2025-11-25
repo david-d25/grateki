@@ -12,8 +12,7 @@ val workerId = System.getProperty("grateki.workerId")
 
 if (workerId != null) {
     allprojects {
-        val originalBuildDir = buildDir
-        buildDir = File(originalBuildDir.parentFile, originalBuildDir.name + "-grateki-$workerId")
+        buildDir = File(buildDir, "build-worker$workerId")
     }
 }
 
