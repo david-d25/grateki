@@ -8,6 +8,15 @@ import java.io.File
  * Each line in the file should contain a fully qualified class name of a test to exclude.
  */
 
+val workerId = System.getProperty("grateki.workerId")
+
+if (workerId != null) {
+    allprojects {
+        val originalBuildDir = buildDir
+        buildDir = File(originalBuildDir.parentFile, originalBuildDir.name + "-grateki-$workerId")
+    }
+}
+
 val propertyName = "grateki.testsToExcludeFile"
 val testsToExcludeFileName = System.getProperty(propertyName) ?:
     throw GradleException("grateki: missing required system property: $propertyName")

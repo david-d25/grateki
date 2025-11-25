@@ -77,7 +77,10 @@ class GratekiRunner (
                 projectPath = config.projectPath,
                 tasks = effectiveTasks,
                 initScriptPath = initScriptProvider.getInclude(),
-                systemProperties = mapOf("grateki.testsToRunFile" to testsFile.toAbsolutePath().toString()),
+                systemProperties = mapOf(
+                    "grateki.testsToRunFile" to testsFile.toAbsolutePath().toString(),
+                    "grateki.workerId" to index.toString()
+                ),
                 gradleLogPath = gradleLogPath
             )
             requests.add(request)
@@ -97,7 +100,10 @@ class GratekiRunner (
             projectPath = config.projectPath,
             tasks = effectiveTasks,
             initScriptPath = initScriptProvider.getExclude(),
-            systemProperties = mapOf("grateki.testsToExcludeFile" to lastWorkerTestsFile.toAbsolutePath().toString()),
+            systemProperties = mapOf(
+                "grateki.testsToExcludeFile" to lastWorkerTestsFile.toAbsolutePath().toString(),
+                "grateki.workerId" to lastWorkerIndex.toString()
+            ),
             gradleLogPath = lastGradleLogPath
         )
         requests.add(lastWorkerRequest)
