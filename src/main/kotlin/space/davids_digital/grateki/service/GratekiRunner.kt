@@ -133,9 +133,26 @@ class GratekiRunner (
                     )
                 }
             }
-            val allRuns: List<TestRunInfo> = results.flatMap { it.tests }
+            val infraFailures = results.filter { !it.success && it.tests.isEmpty() }
+            val combinedResults = if (infraFailures.isNotEmpty()) {
+                println("${infraFailures.size} worker(s) failed before running tests, running unbatched fallback to keep the build going")
+                val fallbackLogPath = logsDir.resolve("gradle-fallback.log").toPath()
+                val fallbackRequest = GradleWorkerRequest(
+                    id = requests.size,
+                    projectPath = config.projectPath,
+                    tasks = effectiveTasks,
+                    initScriptPath = null,
+                    systemProperties = emptyMap(),
+                    gradleLogPath = fallbackLogPath
+                )
+                val fallbackResult = gradleExecutor.run(fallbackRequest, eventHandler)
+                results + fallbackResult
+            } else {
+                results
+            }
+            val allRuns: List<TestRunInfo> = combinedResults.flatMap { it.tests }
             updateHistory(history, allRuns)
-            return RunResult(results)
+            return RunResult(combinedResults)
         } finally {
             executorService.shutdownNow()
         }

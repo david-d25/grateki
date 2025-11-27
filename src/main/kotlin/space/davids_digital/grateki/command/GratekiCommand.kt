@@ -55,6 +55,10 @@ class GratekiCommand : Callable<Int> {
             println("Couldn't find project path $effectiveProjectPath")
             return 1
         }
+        if (!effectiveProjectPath.toFile().isDirectory) {
+            println("Project path $effectiveProjectPath is not a directory")
+            return 1
+        }
         println("Working on project at $effectiveProjectPath")
 
         val defaultHomePath = effectiveProjectPath.resolve(".gradle/grateki")
@@ -85,6 +89,10 @@ class GratekiCommand : Callable<Int> {
         }
 
         // Determine how many workers to use
+        if (workers < 1) {
+            println("Workers count must be at least 1")
+            return 1
+        }
         val maxWorkers = Runtime.getRuntime().availableProcessors() * 16 // Arbitrary limit to prevent insanity
         if (!disableFoolproofness && workers > maxWorkers) {
             println("Requested workers ($workers) exceeds maximum allowed ($maxWorkers). " +
@@ -93,6 +101,11 @@ class GratekiCommand : Callable<Int> {
         }
         val workersSafe = workers.coerceIn(1..maxWorkers)
         val workersEffective = if (disableFoolproofness) workers else workersSafe
+
+        if (timeout != null && (timeout!!.isZero || timeout!!.isNegative)) {
+            println("Timeout must be a positive duration if specified")
+            return 1
+        }
 
         printIntro()
 
