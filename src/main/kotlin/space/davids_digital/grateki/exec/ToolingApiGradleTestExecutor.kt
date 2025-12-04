@@ -1,13 +1,12 @@
 package space.davids_digital.grateki.exec
 
 import org.gradle.tooling.GradleConnector
-import org.gradle.tooling.events.OperationDescriptor
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
-import org.gradle.tooling.events.task.TaskOperationDescriptor
 import org.gradle.tooling.events.test.*
 import space.davids_digital.grateki.exec.event.TestEvent
 import space.davids_digital.grateki.exec.event.TestEventHandler
+import space.davids_digital.grateki.gradle.GradleEventUtils
 import space.davids_digital.grateki.model.*
 import java.io.PrintStream
 import java.util.*
@@ -89,7 +88,7 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
         }
         if (jvmDescriptor.jvmTestKind != JvmTestKind.ATOMIC) return
         val testKey = TestKey(
-            gradlePath = resolveGradleModulePath(jvmDescriptor),
+            gradlePath = GradleEventUtils.resolveGradleModulePath(jvmDescriptor),
             className = jvmDescriptor.className ?: "<unknown>",
             testName = jvmDescriptor.methodName ?: jvmDescriptor.displayName ?: "<unknown>"
         )
@@ -127,22 +126,5 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                 // Cricket sounds...
             }
         }
-    }
-
-    private fun resolveGradleModulePath(descriptor: OperationDescriptor): String {
-        var current: OperationDescriptor? = descriptor
-        while (current != null) {
-            if (current is TaskOperationDescriptor) {
-                val taskPath = current.taskPath // ":core:moduleA:test"
-                val lastColon = taskPath.lastIndexOf(':')
-                return if (lastColon > 0) {
-                    taskPath.take(lastColon) // ":core:moduleA"
-                } else {
-                    taskPath
-                }
-            }
-            current = current.parent
-        }
-        return ""
     }
 }

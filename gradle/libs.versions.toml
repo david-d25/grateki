@@ -5,6 +5,8 @@ gradleToolingApi = "9.0.0"
 slf4j = "2.0.17"
 mapstruct = "1.6.3"
 kotlinxSerializationJson = "1.9.0"
+junit = "6.1.0-M1"
+mockk = "1.14.6"
 
 [libraries]
 picocli-core = { module = "info.picocli:picocli", version.ref = "picocli" }
@@ -14,6 +16,9 @@ slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 mapstruct-core = { module = "org.mapstruct:mapstruct", version.ref = "mapstruct" }
 mapstruct-processor = { module = "org.mapstruct:mapstruct-processor", version.ref = "mapstruct" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform = { module = "org.junit.platform:junit-platform-launcher" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

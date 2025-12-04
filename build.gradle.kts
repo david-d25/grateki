@@ -31,6 +31,11 @@ dependencies {
 
     // Logging
     implementation(libs.slf4j.simple)
+
+    // Testing
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform)
+    testImplementation(libs.mockk)
 }
 
 kapt {
@@ -51,6 +56,10 @@ tasks.jar {
     manifest {
         attributes["Main-Class"] = "space.davids_digital.grateki.AppKt"
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.withType<JavaExec>().configureEach {

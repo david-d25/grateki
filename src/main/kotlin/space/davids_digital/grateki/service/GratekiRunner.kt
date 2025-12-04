@@ -9,13 +9,18 @@ import space.davids_digital.grateki.model.GradleWorkerRequest
 import space.davids_digital.grateki.model.GradleWorkerResult
 import space.davids_digital.grateki.model.RunConfig
 import space.davids_digital.grateki.model.RunResult
+import space.davids_digital.grateki.model.TestBatch
 import space.davids_digital.grateki.model.TestKey
 import space.davids_digital.grateki.model.TestRunInfo
 import space.davids_digital.grateki.model.TestStatus
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import kotlin.collections.flatMap
+import kotlin.collections.plus
+import kotlin.io.path.copyTo
 
 /**
  * An orchestrator for running Gradle tests in parallel workers.
@@ -42,72 +47,63 @@ class GratekiRunner (
 
     fun run(config: RunConfig, eventHandler: TestEventHandler? = null): RunResult {
         val runId = System.currentTimeMillis()
-        val effectiveTasks = config.tasks.ifEmpty { listOf(DEFAULT_TEST_TASK) }
-        val history = historyStore.getAll()
-        val batches = batching.createBatches(history, config.workers)
-        val requests = mutableListOf<GradleWorkerRequest>()
-        // Last worker will run all test not run by other workers to also cover new tests
-        val lastWorkerExclusionList = mutableSetOf<String>()
-        val currentRunDir = config.gratekiHome.toFile().resolve("runs").resolve("run-$runId")
+        val currentRunDir = config.gratekiHome.resolve("runs").resolve("run-$runId")
         val logsDir = currentRunDir.resolve("logs")
         val debugDir = currentRunDir.resolve("debug")
-        currentRunDir.mkdirs()
-        logsDir.mkdirs()
-        debugDir.mkdirs()
+        currentRunDir.toFile().mkdirs()
+        logsDir.toFile().mkdirs()
+        debugDir.toFile().mkdirs()
+
+        val tasks = config.tasks.ifEmpty { listOf(DEFAULT_TEST_TASK) }
+        val history = historyStore.getAll()
+        val batches = batching.createBatches(history, config.workers)
+        val requests = createRequests(batches, config.projectPath, tasks, logsDir, debugDir)
+        val result = executeRequests(requests, config, eventHandler, logsDir)
+        val allRuns: List<TestRunInfo> = result.workerResults.flatMap { it.tests }
+        updateHistory(history, allRuns)
+        return result
+    }
+
+    private fun createRequests(
+        batches: List<TestBatch>,
+        projectPath: Path,
+        tasks: List<String>,
+        logsDir: Path,
+        debugDir: Path
+    ): List<GradleWorkerRequest> {
+        val lastWorkerExclusionList = mutableSetOf<String>()
+        val requests = mutableListOf<GradleWorkerRequest>()
         // Take all batches except the last one
         for (index in 0 ..< batches.lastIndex) {
             val batch = batches[index]
-            // What test classes to run
             val classes = batch.tests.map { it.className }.distinct()
-            lastWorkerExclusionList += classes
-
-            val gradleLogPath = logsDir.resolve("gradle-$index.log").toPath()
-
-            // Init script will read this file to know what test classes to run
-            val testsFile = Files.createTempFile("grateki-tests-${index}-incl-", ".txt")
-            testsFile.toFile().printWriter().use { out ->
-                classes.forEach(out::println)
-            }
-
-            val testsDebugFile = debugDir.resolve("tests-$index-incl.txt")
-            testsFile.toFile().copyTo(testsDebugFile)
-
-            val request = GradleWorkerRequest(
-                id = index,
-                projectPath = config.projectPath,
-                tasks = effectiveTasks,
-                initScriptPath = initScriptProvider.getInclude(),
-                systemProperties = mapOf(
-                    "grateki.testsToRunFile" to testsFile.toAbsolutePath().toString(),
-                    "grateki.workerId" to index.toString()
-                ),
-                gradleLogPath = gradleLogPath
+            requests.add(
+                createGradleWorkerRequest(index, projectPath, tasks, classes, logsDir, debugDir)
             )
-            requests.add(request)
+            lastWorkerExclusionList += classes
         }
-
+        // Last worker will run all test not run by other workers to also cover new tests
         val lastWorkerIndex = batches.lastIndex.coerceAtLeast(0)
-        val lastWorkerTestsFile = Files.createTempFile("grateki-tests-${lastWorkerIndex}-excl-", ".txt")
-        lastWorkerTestsFile.toFile().printWriter().use { out ->
-            lastWorkerExclusionList.forEach(out::println)
-        }
-        val lastTestsDebugFile = debugDir.resolve("tests-$lastWorkerIndex-excl.txt")
-        lastWorkerTestsFile.toFile().copyTo(lastTestsDebugFile)
-        val lastGradleLogPath = logsDir.resolve("gradle-$lastWorkerIndex.log").toPath()
-
-        val lastWorkerRequest = GradleWorkerRequest(
-            id = lastWorkerIndex,
-            projectPath = config.projectPath,
-            tasks = effectiveTasks,
-            initScriptPath = initScriptProvider.getExclude(),
-            systemProperties = mapOf(
-                "grateki.testsToExcludeFile" to lastWorkerTestsFile.toAbsolutePath().toString(),
-                "grateki.workerId" to lastWorkerIndex.toString()
-            ),
-            gradleLogPath = lastGradleLogPath
+        requests.add(
+            createGradleWorkerRequest(
+                lastWorkerIndex,
+                projectPath,
+                tasks,
+                lastWorkerExclusionList.toList(),
+                logsDir,
+                debugDir,
+                exclusionMode = true
+            )
         )
-        requests.add(lastWorkerRequest)
+        return requests
+    }
 
+    private fun executeRequests(
+        requests: List<GradleWorkerRequest>,
+        config: RunConfig,
+        eventHandler: TestEventHandler? = null,
+        logsDir: Path
+    ): RunResult {
         val executorService = Executors.newFixedThreadPool(requests.size)
 
         try {
@@ -133,43 +129,76 @@ class GratekiRunner (
                     )
                 }
             }
+            // Fallback
             val infraFailures = results.filter { !it.success && it.tests.isEmpty() }
-            val combinedResults = if (infraFailures.isNotEmpty()) {
-                println("${infraFailures.size} worker(s) failed before running tests, running unbatched fallback to keep the build going")
-                val fallbackLogPath = logsDir.resolve("gradle-fallback.log").toPath()
+            if (infraFailures.isNotEmpty()) {
+                println("${infraFailures.size} worker(s) failed before running tests, running unbatched fallback")
                 val fallbackRequest = GradleWorkerRequest(
                     id = requests.size,
                     projectPath = config.projectPath,
-                    tasks = effectiveTasks,
-                    initScriptPath = null,
-                    systemProperties = emptyMap(),
-                    gradleLogPath = fallbackLogPath
+                    tasks = requests.flatMap { it.tasks }.distinct(),
+                    gradleLogPath = logsDir.resolve("gradle-fallback.log")
                 )
                 val fallbackResult = gradleExecutor.run(fallbackRequest, eventHandler)
-                results + fallbackResult
-            } else {
-                results
+                return RunResult(results + fallbackResult)
             }
-            val allRuns: List<TestRunInfo> = combinedResults.flatMap { it.tests }
-            updateHistory(history, allRuns)
-            return RunResult(combinedResults)
+            return RunResult(results)
         } finally {
             executorService.shutdownNow()
         }
+    }
+
+    private fun createGradleWorkerRequest(
+        id: Int,
+        projectPath: Path,
+        tasks: List<String>,
+        classes: List<String>,
+        logsDir: Path,
+        debugDir: Path,
+        exclusionMode: Boolean = false,
+    ): GradleWorkerRequest {
+        val logPath = logsDir.resolve("gradle-$id.log")
+        val initScript = if (exclusionMode) initScriptProvider.getExclude() else initScriptProvider.getInclude()
+        val fileSpecifier = if (exclusionMode) "excl" else "incl"
+        val tempFilePrefix = "grateki-tests-$id-$fileSpecifier-"
+        val tempFilePostfix = ".txt"
+
+        val testsFile = Files.createTempFile(tempFilePrefix, tempFilePostfix)
+        testsFile.toFile().printWriter().use { out ->
+            classes.forEach(out::println)
+        }
+
+        val testsDebugFile = debugDir.resolve("tests-$id-$fileSpecifier.txt")
+        testsFile.copyTo(testsDebugFile)
+
+        return GradleWorkerRequest(
+            id = id,
+            projectPath = projectPath,
+            tasks = tasks,
+            initScriptPath = initScript,
+            systemProperties = mapOf(
+                "grateki.testClassesFile" to testsFile.toAbsolutePath().toString(),
+                "grateki.workerId" to id.toString()
+            ),
+            gradleLogPath = logPath
+        )
     }
 
     /**
      * Updates the test history by merging old and new test run information while ensuring the history size limit is
      * respected. Implementing this was surprisingly easier than I expected.
      */
-    private fun updateHistory(oldRunsByKey: Map<TestKey, List<TestRunInfo>>, newRuns: List<TestRunInfo>) {
+    private fun updateHistory(
+        existingHistory: Map<TestKey, List<TestRunInfo>>,
+        newRuns: List<TestRunInfo>
+    ) {
         val newRunsByKey = newRuns.groupBy { it.testKey }
-        val allKeys = newRunsByKey.keys + oldRunsByKey.keys
+        val allKeys = newRunsByKey.keys + existingHistory.keys
 
         val merged = allKeys.associateWith { key ->
-            val oldList = oldRunsByKey[key].orEmpty().filter { it.status != TestStatus.SKIPPED }
-            val newList = newRunsByKey[key].orEmpty().filter { it.status != TestStatus.SKIPPED }
-            (oldList + newList).takeLast(MAX_TEST_HISTORY_ENTRIES)
+            val existingRuns = existingHistory[key].orEmpty().filter { it.status != TestStatus.SKIPPED }
+            val newRuns = newRunsByKey[key].orEmpty().filter { it.status != TestStatus.SKIPPED }
+            (existingRuns + newRuns).takeLast(MAX_TEST_HISTORY_ENTRIES)
         }
 
         historyStore.replace(merged)

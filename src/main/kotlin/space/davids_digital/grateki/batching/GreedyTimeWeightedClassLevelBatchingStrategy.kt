@@ -53,7 +53,7 @@ class GreedyTimeWeightedClassLevelBatchingStrategy : BatchingStrategy {
         // Estimate execution time for each group. One group has many test keys, so we sum their estimates.
         val groupEstimates = groupedTests.mapValues { (_, testKeys) ->
             testKeys.sumOf { testKey ->
-                val successfulRuns = tests[testKey]?.filter { it.status == TestStatus.PASSED } ?: emptyList()
+                val successfulRuns = tests[testKey]!!.filter { it.status == TestStatus.PASSED }
                 if (successfulRuns.isNotEmpty()) {
                     successfulRuns.map { it.durationMs }.average().toLong()
                 } else {
@@ -72,7 +72,11 @@ class GreedyTimeWeightedClassLevelBatchingStrategy : BatchingStrategy {
         // Distribute groups into batches using a greedy algorithm
         for ((groupKey, estimatedDuration) in sortedGroups) {
             // Find the batch with the minimum total estimated duration
-            val minBatchIndex = batchDurations.indices.minByOrNull { batchDurations[it] }!!
+            // In case of a tie, choose the batch with fewer tests
+            val minBatchIndex = batchDurations.indices.minWith(Comparator { a, b ->
+                val cmp = batchDurations[a].compareTo(batchDurations[b])
+                if (cmp != 0) cmp else batches[a].size.compareTo(batches[b].size)
+            })
             // Add all tests in the group to this batch
             batches[minBatchIndex].addAll(groupedTests[groupKey]!!)
             // Update the batch's total estimated duration

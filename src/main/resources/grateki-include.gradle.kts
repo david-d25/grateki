@@ -4,7 +4,7 @@ import java.io.File
 
 /**
  * This Gradle script configures test tasks to include only the tests specified
- * in a file whose path is provided via the system property "grateki.testsToRunFile".
+ * in a file whose path is provided via the system property "grateki.testClassesFile".
  * Each line in the file should contain a fully qualified class name of a test to run.
  */
 
@@ -16,7 +16,7 @@ if (workerId != null) {
     }
 }
 
-val propertyName = "grateki.testsToRunFile"
+val propertyName = "grateki.testClassesFile"
 val testsToRunFileName = System.getProperty(propertyName) ?:
     throw GradleException("grateki: missing required system property: $propertyName")
 
