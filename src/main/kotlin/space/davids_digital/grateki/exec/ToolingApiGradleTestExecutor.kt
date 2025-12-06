@@ -35,6 +35,12 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                                 addAll(listOf("--init-script", it.toString()))
                             }
                             addAll(request.gradleArgs)
+                            // Pass system properties as Gradle project properties (-P) instead of
+                            // JVM args (-D) because Gradle daemon reuse ignores JVM args changes.
+                            // Project properties are per-build, not per-daemon.
+                            request.systemProperties.forEach { (k, v) ->
+                                add("-P$k=$v")
+                            }
                         }
                     )
 
@@ -48,9 +54,7 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                         onBuildStatusChanged(event, collectedTests, buildId, eventHandler)
                     }, OperationType.TEST)
 
-                    if (request.systemProperties.isNotEmpty()) {
-                        build.setJvmArguments(request.jvmArgs + request.systemProperties.map { (k, v) -> "-D$k=$v" })
-                    } else if (request.jvmArgs.isNotEmpty()) {
+                    if (request.jvmArgs.isNotEmpty()) {
                         build.setJvmArguments(request.jvmArgs)
                     }
 
