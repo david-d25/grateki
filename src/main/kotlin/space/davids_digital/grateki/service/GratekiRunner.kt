@@ -50,16 +50,14 @@ class GratekiRunner (
         val currentRunDir = config.gratekiHome.resolve("runs").resolve("run-$runId")
         val logsDir = currentRunDir.resolve("logs")
         val debugDir = currentRunDir.resolve("debug")
-        val gradleHomesDir = currentRunDir.resolve("gradle-homes")
         currentRunDir.toFile().mkdirs()
         logsDir.toFile().mkdirs()
         debugDir.toFile().mkdirs()
-        gradleHomesDir.toFile().mkdirs()
 
         val tasks = config.tasks.ifEmpty { listOf(DEFAULT_TEST_TASK) }
         val history = historyStore.getAll()
         val batches = batching.createBatches(history, config.workers)
-        val requests = createRequests(batches, config.projectPath, tasks, logsDir, debugDir, gradleHomesDir)
+        val requests = createRequests(batches, config.projectPath, tasks, logsDir, debugDir)
         val result = executeRequests(requests, config, eventHandler, logsDir)
         val allRuns: List<TestRunInfo> = result.workerResults.flatMap { it.tests }
         updateHistory(history, allRuns)
@@ -71,8 +69,7 @@ class GratekiRunner (
         projectPath: Path,
         tasks: List<String>,
         logsDir: Path,
-        debugDir: Path,
-        gradleHomesDir: Path
+        debugDir: Path
     ): List<GradleWorkerRequest> {
         val lastWorkerExclusionList = mutableSetOf<String>()
         val requests = mutableListOf<GradleWorkerRequest>()
@@ -81,7 +78,7 @@ class GratekiRunner (
             val batch = batches[index]
             val classes = batch.tests.map { it.className }.distinct()
             requests.add(
-                createGradleWorkerRequest(index, projectPath, tasks, classes, logsDir, debugDir, gradleHomesDir)
+                createGradleWorkerRequest(index, projectPath, tasks, classes, logsDir, debugDir)
             )
             lastWorkerExclusionList += classes
         }
@@ -95,7 +92,6 @@ class GratekiRunner (
                 lastWorkerExclusionList.toList(),
                 logsDir,
                 debugDir,
-                gradleHomesDir,
                 exclusionMode = true
             )
         )
@@ -159,7 +155,6 @@ class GratekiRunner (
         classes: List<String>,
         logsDir: Path,
         debugDir: Path,
-        gradleHomesDir: Path,
         exclusionMode: Boolean = false,
     ): GradleWorkerRequest {
         val logPath = logsDir.resolve("gradle-$id.log")
@@ -176,14 +171,6 @@ class GratekiRunner (
         val testsDebugFile = debugDir.resolve("tests-$id-$fileSpecifier.txt")
         testsFile.copyTo(testsDebugFile)
 
-        // Each worker gets its own Gradle user home to prevent cache conflicts
-        // (configuration cache, transform cache, and daemon isolation)
-        val workerGradleHome = gradleHomesDir.resolve("worker-$id")
-        workerGradleHome.toFile().mkdirs()
-
-        // Share the Gradle wrapper distribution to avoid downloading it N times
-        linkSharedWrapperDistribution(workerGradleHome)
-
         return GradleWorkerRequest(
             id = id,
             projectPath = projectPath,
@@ -193,8 +180,11 @@ class GratekiRunner (
                 "grateki.testClassesFile" to testsFile.toAbsolutePath().toString(),
                 "grateki.workerId" to id.toString()
             ),
-            gradleLogPath = logPath,
-            gradleUserHome = workerGradleHome
+            // Disable configuration cache to prevent conflicts between parallel workers.
+            // Workers share the Gradle daemon and caches for speed, but configuration cache
+            // stores per-build state that conflicts when multiple builds run concurrently.
+            gradleArgs = listOf("--no-configuration-cache"),
+            gradleLogPath = logPath
         )
     }
 
@@ -216,50 +206,5 @@ class GratekiRunner (
         }
 
         historyStore.replace(merged)
-    }
-
-    /**
-     * Creates a symbolic link (or junction on Windows) from the worker's wrapper directory to the
-     * default Gradle user home's wrapper directory. This allows workers to share the downloaded
-     * Gradle distribution while keeping other caches (configuration cache, transforms, daemons) isolated.
-     */
-    private fun linkSharedWrapperDistribution(workerGradleHome: Path) {
-        val defaultGradleHome = System.getenv("GRADLE_USER_HOME")?.let { Path.of(it) }
-            ?: Path.of(System.getProperty("user.home"), ".gradle")
-        val sharedWrapper = defaultGradleHome.resolve("wrapper")
-
-        if (!Files.exists(sharedWrapper)) {
-            return // No shared wrapper to link to
-        }
-
-        val workerWrapper = workerGradleHome.resolve("wrapper")
-        if (Files.exists(workerWrapper)) {
-            return // Already exists (symlink or directory)
-        }
-
-        try {
-            Files.createSymbolicLink(workerWrapper, sharedWrapper)
-        } catch (e: Exception) {
-            // Symlink failed (Windows without Developer Mode) - try junction
-            if (System.getProperty("os.name").lowercase().contains("win")) {
-                tryCreateWindowsJunction(workerWrapper, sharedWrapper)
-            }
-        }
-    }
-
-    /**
-     * Creates a Windows directory junction. Unlike symlinks, junctions don't require
-     * admin rights or Developer Mode on Windows.
-     */
-    private fun tryCreateWindowsJunction(link: Path, target: Path) {
-        try {
-            val process = ProcessBuilder("cmd", "/c", "mklink", "/J", link.toString(), target.toString())
-                .redirectErrorStream(true)
-                .start()
-            // Timeout to prevent hanging if something goes wrong
-            process.waitFor(5, TimeUnit.SECONDS)
-        } catch (e: Exception) {
-            // Junction creation failed - workers will download their own Gradle copies
-        }
     }
 }
