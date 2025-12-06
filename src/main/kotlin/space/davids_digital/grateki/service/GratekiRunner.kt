@@ -256,7 +256,8 @@ class GratekiRunner (
             val process = ProcessBuilder("cmd", "/c", "mklink", "/J", link.toString(), target.toString())
                 .redirectErrorStream(true)
                 .start()
-            process.waitFor()
+            // Timeout to prevent hanging if something goes wrong
+            process.waitFor(5, TimeUnit.SECONDS)
         } catch (e: Exception) {
             // Junction creation failed - workers will download their own Gradle copies
         }
