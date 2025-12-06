@@ -181,6 +181,9 @@ class GratekiRunner (
         val workerGradleHome = gradleHomesDir.resolve("worker-$id")
         workerGradleHome.toFile().mkdirs()
 
+        // Share the Gradle wrapper distribution to avoid downloading it N times
+        linkSharedWrapperDistribution(workerGradleHome)
+
         return GradleWorkerRequest(
             id = id,
             projectPath = projectPath,
@@ -213,5 +216,36 @@ class GratekiRunner (
         }
 
         historyStore.replace(merged)
+    }
+
+    /**
+     * Creates a symbolic link from the worker's wrapper directory to the default Gradle user home's
+     * wrapper directory. This allows workers to share the downloaded Gradle distribution while
+     * keeping other caches (configuration cache, transforms, daemons) isolated.
+     *
+     * If symlink creation fails (e.g., on Windows without developer mode), it silently falls back
+     * to letting each worker download its own copy.
+     */
+    private fun linkSharedWrapperDistribution(workerGradleHome: Path) {
+        val defaultGradleHome = System.getenv("GRADLE_USER_HOME")?.let { Path.of(it) }
+            ?: Path.of(System.getProperty("user.home"), ".gradle")
+        val sharedWrapper = defaultGradleHome.resolve("wrapper")
+
+        if (!Files.exists(sharedWrapper)) {
+            return // No shared wrapper to link to
+        }
+
+        val workerWrapper = workerGradleHome.resolve("wrapper")
+        if (Files.exists(workerWrapper)) {
+            return // Already exists (symlink or directory)
+        }
+
+        try {
+            Files.createSymbolicLink(workerWrapper, sharedWrapper)
+        } catch (e: Exception) {
+            // Symlink creation may fail on Windows without developer mode or admin rights.
+            // In this case, fall back to letting Gradle download the distribution.
+            // This is suboptimal but functional.
+        }
     }
 }
