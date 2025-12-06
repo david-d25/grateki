@@ -49,12 +49,12 @@ kotlin {
 }
 
 application {
-    mainClass.set("space.davids_digital.grateki.AppKt")
+    mainClass.set("space.davids_digital.grateki.MainKt")
 }
 
 tasks.jar {
     manifest {
-        attributes["Main-Class"] = "space.davids_digital.grateki.AppKt"
+        attributes["Main-Class"] = "space.davids_digital.grateki.MainKt"
     }
 }
 
