@@ -219,12 +219,9 @@ class GratekiRunner (
     }
 
     /**
-     * Creates a symbolic link from the worker's wrapper directory to the default Gradle user home's
-     * wrapper directory. This allows workers to share the downloaded Gradle distribution while
-     * keeping other caches (configuration cache, transforms, daemons) isolated.
-     *
-     * If symlink creation fails (e.g., on Windows without developer mode), it silently falls back
-     * to letting each worker download its own copy.
+     * Creates a symbolic link (or junction on Windows) from the worker's wrapper directory to the
+     * default Gradle user home's wrapper directory. This allows workers to share the downloaded
+     * Gradle distribution while keeping other caches (configuration cache, transforms, daemons) isolated.
      */
     private fun linkSharedWrapperDistribution(workerGradleHome: Path) {
         val defaultGradleHome = System.getenv("GRADLE_USER_HOME")?.let { Path.of(it) }
@@ -243,9 +240,25 @@ class GratekiRunner (
         try {
             Files.createSymbolicLink(workerWrapper, sharedWrapper)
         } catch (e: Exception) {
-            // Symlink creation may fail on Windows without developer mode or admin rights.
-            // In this case, fall back to letting Gradle download the distribution.
-            // This is suboptimal but functional.
+            // Symlink failed (Windows without Developer Mode) - try junction
+            if (System.getProperty("os.name").lowercase().contains("win")) {
+                tryCreateWindowsJunction(workerWrapper, sharedWrapper)
+            }
+        }
+    }
+
+    /**
+     * Creates a Windows directory junction. Unlike symlinks, junctions don't require
+     * admin rights or Developer Mode on Windows.
+     */
+    private fun tryCreateWindowsJunction(link: Path, target: Path) {
+        try {
+            val process = ProcessBuilder("cmd", "/c", "mklink", "/J", link.toString(), target.toString())
+                .redirectErrorStream(true)
+                .start()
+            process.waitFor()
+        } catch (e: Exception) {
+            // Junction creation failed - workers will download their own Gradle copies
         }
     }
 }
