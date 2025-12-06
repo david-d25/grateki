@@ -180,10 +180,11 @@ class GratekiRunner (
                 "grateki.testClassesFile" to testsFile.toAbsolutePath().toString(),
                 "grateki.workerId" to id.toString()
             ),
-            // Disable configuration cache to prevent conflicts between parallel workers.
-            // Workers share the Gradle daemon and caches for speed, but configuration cache
-            // stores per-build state that conflicts when multiple builds run concurrently.
-            gradleArgs = listOf("--no-configuration-cache"),
+            // Disable configuration cache and build cache to prevent conflicts between
+            // parallel workers. Workers share the Gradle daemon for speed, but these caches
+            // store per-build state that conflicts when multiple builds run concurrently
+            // with different build directories.
+            gradleArgs = listOf("--no-configuration-cache", "--no-build-cache"),
             gradleLogPath = logPath
         )
     }
