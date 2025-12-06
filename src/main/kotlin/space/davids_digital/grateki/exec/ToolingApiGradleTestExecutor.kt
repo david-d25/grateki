@@ -18,11 +18,13 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
         val collectedTests = CopyOnWriteArrayList<TestRunInfo>()
 
         return try {
-            // Connect to the Gradle project
-            val connection = GradleConnector.newConnector()
+            // Connect to the Gradle project with isolated Gradle user home per worker
+            // to prevent cache conflicts (configuration cache, transforms, daemons)
+            val connector = GradleConnector.newConnector()
                 .forProjectDirectory(request.projectPath.toFile())
                 .useBuildDistribution()
-                .connect()
+            request.gradleUserHome?.let { connector.useGradleUserHomeDir(it.toFile()) }
+            val connection = connector.connect()
 
             connection.use { connection ->
                 val build = connection.newBuild()

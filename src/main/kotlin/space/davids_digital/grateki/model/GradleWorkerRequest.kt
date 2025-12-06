@@ -30,7 +30,7 @@ data class GradleWorkerRequest(
     /**
      * Map of system properties to set for the Gradle build.
      * A more convenient way for passing configuration to init scripts.
-     * Each entry will be converted to a JVM argument of the form `-Dkey=value`.
+     * Each entry will be converted to a Gradle project property of the form `-Pkey=value`.
      */
     val systemProperties: Map<String, String> = emptyMap(),
 
@@ -55,5 +55,12 @@ data class GradleWorkerRequest(
      * Both stdout and stderr will be redirected to this file if provided.
      * If null, output will be disabled.
      */
-    val gradleLogPath: Path? = null
+    val gradleLogPath: Path? = null,
+
+    /**
+     * Path to the Gradle user home directory for this worker.
+     * This isolates caches, configuration cache, and daemons between workers.
+     * If null, uses the default Gradle user home (~/.gradle).
+     */
+    val gradleUserHome: Path? = null
 )
