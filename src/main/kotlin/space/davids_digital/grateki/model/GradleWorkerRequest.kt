@@ -28,11 +28,10 @@ data class GradleWorkerRequest(
     val initScriptPath: Path? = null,
 
     /**
-     * Map of system properties to set for the Gradle build.
-     * A more convenient way for passing configuration to init scripts.
-     * Each entry will be converted to a JVM argument of the form `-Dkey=value`.
+     * Map of project properties to set for the Gradle build.
+     * Each entry will be converted to a Gradle project property of the form `-Pkey=value`.
      */
-    val systemProperties: Map<String, String> = emptyMap(),
+    val projectProperties: Map<String, String> = emptyMap(),
 
     /**
      * List of JVM arguments to set for the Gradle build.

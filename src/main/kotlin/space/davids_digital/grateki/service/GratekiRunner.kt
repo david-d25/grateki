@@ -50,14 +50,16 @@ class GratekiRunner (
         val currentRunDir = config.gratekiHome.resolve("runs").resolve("run-$runId")
         val logsDir = currentRunDir.resolve("logs")
         val debugDir = currentRunDir.resolve("debug")
+        val projectCachesDir = currentRunDir.resolve("cache")
         currentRunDir.toFile().mkdirs()
         logsDir.toFile().mkdirs()
         debugDir.toFile().mkdirs()
+        projectCachesDir.toFile().mkdirs()
 
         val tasks = config.tasks.ifEmpty { listOf(DEFAULT_TEST_TASK) }
         val history = historyStore.getAll()
         val batches = batching.createBatches(history, config.workers)
-        val requests = createRequests(batches, config.projectPath, tasks, logsDir, debugDir)
+        val requests = createRequests(batches, config.projectPath, tasks, logsDir, debugDir, projectCachesDir)
         val result = executeRequests(requests, config, eventHandler, logsDir)
         val allRuns: List<TestRunInfo> = result.workerResults.flatMap { it.tests }
         updateHistory(history, allRuns)
@@ -69,7 +71,8 @@ class GratekiRunner (
         projectPath: Path,
         tasks: List<String>,
         logsDir: Path,
-        debugDir: Path
+        debugDir: Path,
+        projectCachesDir: Path
     ): List<GradleWorkerRequest> {
         val lastWorkerExclusionList = mutableSetOf<String>()
         val requests = mutableListOf<GradleWorkerRequest>()
@@ -78,7 +81,7 @@ class GratekiRunner (
             val batch = batches[index]
             val classes = batch.tests.map { it.className }.distinct()
             requests.add(
-                createGradleWorkerRequest(index, projectPath, tasks, classes, logsDir, debugDir)
+                createGradleWorkerRequest(index, projectPath, tasks, classes, logsDir, debugDir, projectCachesDir)
             )
             lastWorkerExclusionList += classes
         }
@@ -92,6 +95,7 @@ class GratekiRunner (
                 lastWorkerExclusionList.toList(),
                 logsDir,
                 debugDir,
+                projectCachesDir,
                 exclusionMode = true
             )
         )
@@ -155,6 +159,7 @@ class GratekiRunner (
         classes: List<String>,
         logsDir: Path,
         debugDir: Path,
+        projectCachesDir: Path,
         exclusionMode: Boolean = false,
     ): GradleWorkerRequest {
         val logPath = logsDir.resolve("gradle-$id.log")
@@ -171,16 +176,20 @@ class GratekiRunner (
         val testsDebugFile = debugDir.resolve("tests-$id-$fileSpecifier.txt")
         testsFile.copyTo(testsDebugFile)
 
+        val workerProjectCacheDir = projectCachesDir.resolve("worker-$id")
+        workerProjectCacheDir.toFile().mkdirs()
+
         return GradleWorkerRequest(
             id = id,
             projectPath = projectPath,
             tasks = tasks,
             initScriptPath = initScript,
-            systemProperties = mapOf(
+            projectProperties = mapOf(
                 "grateki.testClassesFile" to testsFile.toAbsolutePath().toString(),
                 "grateki.workerId" to id.toString()
             ),
-            gradleLogPath = logPath
+            gradleLogPath = logPath,
+            gradleArgs = listOf("--project-cache-dir", workerProjectCacheDir.toString()),
         )
     }
 

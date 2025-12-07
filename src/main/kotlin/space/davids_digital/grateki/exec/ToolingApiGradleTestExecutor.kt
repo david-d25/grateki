@@ -18,11 +18,10 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
         val collectedTests = CopyOnWriteArrayList<TestRunInfo>()
 
         return try {
-            // Connect to the Gradle project
-            val connection = GradleConnector.newConnector()
+            val connector = GradleConnector.newConnector()
                 .forProjectDirectory(request.projectPath.toFile())
                 .useBuildDistribution()
-                .connect()
+            val connection = connector.connect()
 
             connection.use { connection ->
                 val build = connection.newBuild()
@@ -35,6 +34,9 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                                 addAll(listOf("--init-script", it.toString()))
                             }
                             addAll(request.gradleArgs)
+                            request.projectProperties.forEach { (k, v) ->
+                                add("-P$k=$v")
+                            }
                         }
                     )
 
@@ -48,9 +50,7 @@ class ToolingApiGradleTestExecutor : GradleTestExecutor {
                         onBuildStatusChanged(event, collectedTests, buildId, eventHandler)
                     }, OperationType.TEST)
 
-                    if (request.systemProperties.isNotEmpty()) {
-                        build.setJvmArguments(request.jvmArgs + request.systemProperties.map { (k, v) -> "-D$k=$v" })
-                    } else if (request.jvmArgs.isNotEmpty()) {
+                    if (request.jvmArgs.isNotEmpty()) {
                         build.setJvmArguments(request.jvmArgs)
                     }
 
